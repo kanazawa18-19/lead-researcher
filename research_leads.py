@@ -13,7 +13,7 @@ ANTHROPIC_API_KEY = os.environ["ANTHROPIC_API_KEY"]
 app = App(token=SLACK_BOT_TOKEN)
 claude = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 
-LEAD_PATTERN = re.compile(r"貴社名[：:]|資料ダウンロードがございました|お問合せがありました")
+LEAD_PATTERN = re.compile(r"貴社名[：:]")
 PROCESSED_REACTION = "white_check_mark"
 
 # 自分自身のbot_idを起動時に取得（自己ループ防止）
