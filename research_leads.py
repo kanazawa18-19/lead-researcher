@@ -161,5 +161,6 @@ def handle_lead(event, client, logger):
 
 
 if __name__ == "__main__":
+    print("Starting Slack Lead Bot...", flush=True)
     handler = SocketModeHandler(app, SLACK_APP_TOKEN)
     handler.start()
