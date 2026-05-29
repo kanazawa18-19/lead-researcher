@@ -119,6 +119,8 @@ def handle_lead(event, client, logger):
     if event.get("bot_id") == OWN_BOT_ID:
         return
 
+    logger.info(f"EVENT: {event}")  # デバッグ用：全イベントを記録
+
     ts = event["ts"]
     channel = event["channel"]
     text = event.get("text", "") or ""
