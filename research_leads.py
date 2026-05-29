@@ -137,7 +137,16 @@ def handle_lead(message, client, logger):
     client.chat_postMessage(
         channel=channel,
         thread_ts=ts,
-        text=f"*{company}* 調査\n\n{summary}",
+        text=(
+            f"*{company}* 調査\n\n"
+            f"*【リード情報】*\n"
+            f"• 担当者: {lead.get('name', '')}\n"
+            f"• 会社名: {company}\n"
+            f"• メール: {lead.get('email', '')}\n"
+            f"• 電話: {lead.get('phone', '')}\n"
+            f"• 資料: {lead.get('doc', '')}\n\n"
+            f"*【企業調査】*\n{summary}"
+        ),
     )
     client.reactions_add(channel=channel, name=PROCESSED_REACTION, timestamp=ts)
     logger.info(f"Done: {company}")
