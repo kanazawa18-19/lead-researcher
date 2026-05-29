@@ -16,6 +16,9 @@ claude = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 LEAD_PATTERN = re.compile(r"貴社名[：:]|資料ダウンロードがございました|お問合せがありました")
 PROCESSED_REACTION = "white_check_mark"
 
+# 自分自身のbot_idを起動時に取得（自己ループ防止）
+OWN_BOT_ID = app.client.auth_test()["bot_id"]
+
 
 def is_test(lead):
     company = lead.get("company", "").strip()
@@ -110,11 +113,18 @@ def build_summary(lead, site_content, urls):
     return msg.content[0].text
 
 
-@app.message(LEAD_PATTERN)
-def handle_lead(message, client, logger):
-    ts = message["ts"]
-    channel = message["channel"]
-    text = message.get("text", "")
+@app.event("message")
+def handle_lead(event, client, logger):
+    # 自分自身の投稿はスキップ（無限ループ防止）
+    if event.get("bot_id") == OWN_BOT_ID:
+        return
+
+    ts = event["ts"]
+    channel = event["channel"]
+    text = event.get("text", "") or ""
+
+    if not LEAD_PATTERN.search(text):
+        return
 
     lead = parse_lead(text)
 
@@ -123,6 +133,7 @@ def handle_lead(message, client, logger):
         return
 
     if not lead.get("company"):
+        logger.info(f"No company found, skipping. text={text[:100]}")
         return
 
     company = lead["company"]
