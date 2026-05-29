@@ -139,12 +139,7 @@ def handle_lead(message, client, logger):
         thread_ts=ts,
         text=(
             f"*{company}* 調査\n\n"
-            f"*【リード情報】*\n"
-            f"• 担当者: {lead.get('name', '')}\n"
-            f"• 会社名: {company}\n"
-            f"• メール: {lead.get('email', '')}\n"
-            f"• 電話: {lead.get('phone', '')}\n"
-            f"• 資料: {lead.get('doc', '')}\n\n"
+            f"*【リード情報】*\n```{text}```\n\n"
             f"*【企業調査】*\n{summary}"
         ),
     )
