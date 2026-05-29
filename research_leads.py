@@ -126,6 +126,21 @@ def handle_lead(event, client, logger):
     channel = event["channel"]
     text = event.get("text", "") or ""
 
+    # メールファイルの場合はHTMLをパースしてテキスト抽出
+    for f in event.get("files", []):
+        if f.get("mimetype", "").startswith("text"):
+            raw = requests.get(
+                f["url_private_download"],
+                headers={"Authorization": f"Bearer {SLACK_BOT_TOKEN}"},
+                timeout=10,
+            ).text
+            if f.get("mimetype") == "text/html":
+                text += "\n" + BeautifulSoup(raw, "html.parser").get_text(" ", strip=True)
+            else:
+                text += "\n" + raw
+
+    print(f"EXTRACTED TEXT: {text[:300]}", flush=True)
+
     if not LEAD_PATTERN.search(text):
         return
 
