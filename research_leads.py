@@ -73,11 +73,28 @@ def fetch_site(domain):
             if r.status_code == 200:
                 soup = BeautifulSoup(r.text, "html.parser")
                 texts = [t.get_text(" ", strip=True)
-                         for t in soup.find_all(["title", "h1", "h2", "h3", "p", "address"])]
+                         for t in soup.find_all(["title", "h1", "h2", "h3", "p", "address", "footer"])]
                 return "\n".join(texts)[:5000]
         except Exception:
             continue
     return ""
+
+
+def search_address(company_name):
+    """Google検索で住所・所在地を取得する"""
+    try:
+        r = requests.get(
+            "https://www.google.com/search",
+            params={"q": f"{company_name} 住所 所在地", "num": 3},
+            headers={"User-Agent": "Mozilla/5.0"},
+            timeout=8,
+        )
+        soup = BeautifulSoup(r.text, "html.parser")
+        # 検索結果のスニペットを抽出
+        snippets = [s.get_text(" ", strip=True) for s in soup.select(".VwiC3b, .yDYNvb, span")]
+        return "\n".join(snippets)[:1000]
+    except Exception:
+        return ""
 
 
 def search_urls(company_name):
@@ -109,7 +126,7 @@ def search_urls(company_name):
     return results
 
 
-def build_summary(lead, site_content, urls):
+def build_summary(lead, site_content, urls, address_hints=""):
     msg = claude.messages.create(
         model="claude-opus-4-8",
         max_tokens=600,
@@ -126,6 +143,9 @@ def build_summary(lead, site_content, urls):
 
 企業サイト内容:
 {site_content or '（取得できませんでした）'}
+
+住所検索結果:
+{address_hints or '（取得できませんでした）'}
 
 以下の形式で出力してください（情報がない場合は「なし」）:
 
@@ -172,7 +192,8 @@ def handle_lead(event, client, logger):
     domain = lead.get("email", "").split("@")[-1] if "@" in lead.get("email", "") else ""
     site_content = fetch_site(domain) if domain else ""
     urls = search_urls(company)
-    summary = build_summary(lead, site_content, urls)
+    address_hints = search_address(company)
+    summary = build_summary(lead, site_content, urls, address_hints)
 
     client.chat_postMessage(
         channel=channel,
