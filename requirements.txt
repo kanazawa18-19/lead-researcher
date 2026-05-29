@@ -1,0 +1,4 @@
+anthropic
+slack-bolt
+requests
+beautifulsoup4

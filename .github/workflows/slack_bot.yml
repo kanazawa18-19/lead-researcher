@@ -1,0 +1,32 @@
+name: Slack Lead Bot
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 */5 * * *"  # 5時間ごとに再起動（6時間制限の前に更新）
+
+concurrency:
+  group: slack-lead-bot
+  cancel-in-progress: true  # 新しいジョブが起動したら古いジョブをキャンセル
+
+jobs:
+  bot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 295  # 5時間以内に必ず終了
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install slack-bolt anthropic requests beautifulsoup4
+
+      - name: Run Slack Bot
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          SLACK_APP_TOKEN: ${{ secrets.SLACK_APP_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: python research_leads.py
