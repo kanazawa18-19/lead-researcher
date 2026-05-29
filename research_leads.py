@@ -115,11 +115,11 @@ def build_summary(lead, site_content, urls):
 
 @app.event("message")
 def handle_lead(event, client, logger):
+    logger.info(f"EVENT: {event}")  # デバッグ用：全イベントを記録（フィルター前）
+
     # 自分自身の投稿はスキップ（無限ループ防止）
     if event.get("bot_id") == OWN_BOT_ID:
         return
-
-    logger.info(f"EVENT: {event}")  # デバッグ用：全イベントを記録
 
     ts = event["ts"]
     channel = event["channel"]
