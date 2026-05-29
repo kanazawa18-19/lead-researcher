@@ -13,7 +13,7 @@ ANTHROPIC_API_KEY = os.environ["ANTHROPIC_API_KEY"]
 app = App(token=SLACK_BOT_TOKEN)
 claude = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 
-LEAD_PATTERN = re.compile(r"貴社名[：:]")
+LEAD_PATTERN = re.compile(r"貴社名[：:]|会社名[：:]|施設名[：:]")
 PROCESSED_REACTION = "white_check_mark"
 
 # 自分自身のbot_idを起動時に取得（自己ループ防止）
@@ -28,9 +28,9 @@ def is_test(lead):
 def parse_lead(text):
     patterns = {
         "name":    r"お名前[：:]\s*(.+)",
-        "company": r"貴社名[：:]\s*(.+)",
+        "company": r"(?:貴社名|会社名(?:または施設名)?|施設名)[：:]\s*(.+)",
         "email":   r"メールアドレス[：:]\s*(.+)",
-        "phone":   r"連絡先電話番号[：:]\s*(.+)",
+        "phone":   r"(?:連絡先電話番号|電話番号)[：:]\s*(.+)",
         "doc":     r"資料名[：:]\s*(.+)",
     }
     return {k: m.group(1).strip() for k, p in patterns.items() if (m := re.search(p, text))}
