@@ -31,5 +31,7 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
           NOTION_INQUIRY_DATABASE_ID: ${{ secrets.NOTION_INQUIRY_DATABASE_ID }}
+          CRM_SFA_LEAD_INQUIRY_WEBHOOK_URL: ${{ secrets.CRM_SFA_LEAD_INQUIRY_WEBHOOK_URL }}
+          CRM_SFA_LEAD_INQUIRY_WEBHOOK_SECRET: ${{ secrets.CRM_SFA_LEAD_INQUIRY_WEBHOOK_SECRET }}
           PYTHONUNBUFFERED: "1"
         run: python -u research_leads.py

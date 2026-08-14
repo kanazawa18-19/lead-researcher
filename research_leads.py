@@ -16,6 +16,10 @@ ANTHROPIC_API_KEY = os.environ["ANTHROPIC_API_KEY"]
 # （同じNotion integration・同じDB IDを共有する）。
 NOTION_API_KEY = os.environ.get("NOTION_API_KEY")
 NOTION_INQUIRY_DATABASE_ID = os.environ.get("NOTION_INQUIRY_DATABASE_ID")
+# 任意（未設定ならCRM連絡先への同期をスキップ）。crm-sfa-integration側の
+# POST /api/webhooks/lead-inquiry（連絡先DBへのfind-or-create、db_key=contact）。
+CRM_SFA_LEAD_INQUIRY_WEBHOOK_URL = os.environ.get("CRM_SFA_LEAD_INQUIRY_WEBHOOK_URL")
+CRM_SFA_LEAD_INQUIRY_WEBHOOK_SECRET = os.environ.get("CRM_SFA_LEAD_INQUIRY_WEBHOOK_SECRET")
 
 app = App(token=SLACK_BOT_TOKEN)
 claude = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
@@ -229,6 +233,34 @@ def create_notion_inquiry_page(lead, summary):
         print(f"Notion登録失敗: {name} ({e})", flush=True)
 
 
+def sync_lead_to_crm(lead):
+    """リード情報をcrm-sfa-integrationの連絡先DBへfind-or-createで同期する。
+
+    未設定・失敗時は例外を送出せずログのみ出力し、既存のSlack投稿フローを止めない
+    （`create_notion_inquiry_page`と同じフェイルセーフ方針）。
+    """
+    if not CRM_SFA_LEAD_INQUIRY_WEBHOOK_URL or not CRM_SFA_LEAD_INQUIRY_WEBHOOK_SECRET:
+        print("CRM連絡先同期スキップ: CRM_SFA_LEAD_INQUIRY_WEBHOOK_URL/SECRET未設定", flush=True)
+        return
+
+    try:
+        r = requests.post(
+            CRM_SFA_LEAD_INQUIRY_WEBHOOK_URL,
+            json={
+                "company": lead.get("company", ""),
+                "name": lead.get("name", ""),
+                "email": lead.get("email", ""),
+                "phone": lead.get("phone", ""),
+            },
+            headers={"X-Webhook-Secret": CRM_SFA_LEAD_INQUIRY_WEBHOOK_SECRET},
+            timeout=10,
+        )
+        r.raise_for_status()
+        print(f"CRM連絡先同期完了: {r.json()}", flush=True)
+    except Exception as e:
+        print(f"CRM連絡先同期失敗: {e}", flush=True)
+
+
 @app.event("message")
 def handle_lead(event, client, logger):
     # 自分自身の投稿はスキップ
@@ -260,6 +292,7 @@ def handle_lead(event, client, logger):
     address_hints = search_address(company)
     summary = build_summary(lead, site_content, urls, address_hints)
     create_notion_inquiry_page(lead, summary)
+    sync_lead_to_crm(lead)
 
     client.chat_postMessage(
         channel=channel,
