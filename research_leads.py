@@ -1,19 +1,40 @@
 import os
+from datetime import datetime, timezone
+
 import requests
 from bs4 import BeautifulSoup
 from slack_bolt import App
 from slack_bolt.adapter.socket_mode import SocketModeHandler
 import anthropic
+from notion_client import Client as NotionClient
 
 SLACK_BOT_TOKEN = os.environ["SLACK_BOT_TOKEN"]
 SLACK_APP_TOKEN = os.environ["SLACK_APP_TOKEN"]
 ANTHROPIC_API_KEY = os.environ["ANTHROPIC_API_KEY"]
+# 任意（未設定ならNotion登録をスキップし、Slack投稿のみ行う）。web-engagement-toolの
+# notionSync.tsが読んでいるのと同じ「【営業部】お問合せリード管理」DBへ書き込む前提の値
+# （同じNotion integration・同じDB IDを共有する）。
+NOTION_API_KEY = os.environ.get("NOTION_API_KEY")
+NOTION_INQUIRY_DATABASE_ID = os.environ.get("NOTION_INQUIRY_DATABASE_ID")
 
 app = App(token=SLACK_BOT_TOKEN)
 claude = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+notion = NotionClient(auth=NOTION_API_KEY) if NOTION_API_KEY else None
 
 PROCESSED_REACTION = "white_check_mark"
 OWN_BOT_ID = app.client.auth_test()["bot_id"]
+
+# web-engagement-tool/src/lib/notionSync.tsのPROPと同じプロパティ名（あちら側が
+# pullFromNotion()でこのDBのプロパティだけを読む——ページ本文は読まないため、リサーチ結果は
+# 「補足」プロパティに入れる必要がある）。
+NOTION_PROP = {
+    "name": "名前",
+    "company": "会社名",
+    "email": "メールアドレス",
+    "phone": "電話番号",
+    "supplement": "補足",
+    "received_at": "受信日時",
+}
 
 
 def get_email_file(event):
@@ -164,6 +185,50 @@ def build_summary(lead, site_content, urls, address_hints=""):
     return msg.content[0].text
 
 
+# Notion rich_textプロパティの1テキストオブジェクトあたりの上限（Notion API仕様）。
+_NOTION_RICH_TEXT_MAX_LEN = 2000
+
+
+def create_notion_inquiry_page(lead, summary):
+    """企業調査サマリーを「補足」プロパティとして【営業部】お問合せリード管理DBへ登録する。
+
+    web-engagement-tool側(`src/lib/notionSync.ts`)が同じDBを毎日プルしてLead/LeadInquiryへ
+    取り込む（プロパティのみ参照、ページ本文は見ない）ため、リサーチ結果は本文ではなく
+    「補足」プロパティに入れる必要がある。NOTION_API_KEY/NOTION_INQUIRY_DATABASE_ID未設定、
+    またはNotion API呼び出し失敗時は、既存のSlack投稿フローを止めないよう例外を送出せず
+    ログのみ出力してスキップする。
+    """
+    if notion is None or not NOTION_INQUIRY_DATABASE_ID:
+        print("Notion登録スキップ: NOTION_API_KEY/NOTION_INQUIRY_DATABASE_ID未設定", flush=True)
+        return
+
+    name = lead.get("name") or lead.get("company") or "(名前不明)"
+    properties = {
+        NOTION_PROP["name"]: {"title": [{"text": {"content": name}}]},
+        NOTION_PROP["supplement"]: {
+            "rich_text": [{"text": {"content": summary[:_NOTION_RICH_TEXT_MAX_LEN]}}]
+        },
+        NOTION_PROP["received_at"]: {"date": {"start": datetime.now(timezone.utc).isoformat()}},
+    }
+    if lead.get("company"):
+        properties[NOTION_PROP["company"]] = {
+            "rich_text": [{"text": {"content": lead["company"]}}]
+        }
+    if lead.get("email"):
+        properties[NOTION_PROP["email"]] = {"email": lead["email"]}
+    if lead.get("phone"):
+        properties[NOTION_PROP["phone"]] = {"phone_number": lead["phone"]}
+
+    try:
+        notion.pages.create(
+            parent={"database_id": NOTION_INQUIRY_DATABASE_ID},
+            properties=properties,
+        )
+        print(f"Notion登録完了: {name}", flush=True)
+    except Exception as e:
+        print(f"Notion登録失敗: {name} ({e})", flush=True)
+
+
 @app.event("message")
 def handle_lead(event, client, logger):
     # 自分自身の投稿はスキップ
@@ -194,6 +259,7 @@ def handle_lead(event, client, logger):
     urls = search_urls(company)
     address_hints = search_address(company)
     summary = build_summary(lead, site_content, urls, address_hints)
+    create_notion_inquiry_page(lead, summary)
 
     client.chat_postMessage(
         channel=channel,

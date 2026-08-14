@@ -22,12 +22,14 @@ jobs:
           python-version: "3.11"
 
       - name: Install dependencies
-        run: pip install slack-bolt anthropic requests beautifulsoup4
+        run: pip install slack-bolt anthropic requests beautifulsoup4 notion-client
 
       - name: Run Slack Bot
         env:
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
           SLACK_APP_TOKEN: ${{ secrets.SLACK_APP_TOKEN }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+          NOTION_INQUIRY_DATABASE_ID: ${{ secrets.NOTION_INQUIRY_DATABASE_ID }}
           PYTHONUNBUFFERED: "1"
         run: python -u research_leads.py

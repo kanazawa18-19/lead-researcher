@@ -2,3 +2,4 @@ anthropic
 slack-bolt
 requests
 beautifulsoup4
+notion-client
