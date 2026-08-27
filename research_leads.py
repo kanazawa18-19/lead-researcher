@@ -56,10 +56,19 @@ def get_email_file(event):
     return None
 
 
+def _response_text(msg):
+    """Claudeのレスポンスからテキストだけを連結して返す。
+
+    thinkingが有効なモデル（Sonnet 5等はthinking省略時にadaptiveでONになる）では
+    content[0]がThinkingBlockになるため、content[0].text決め打ちにはしない。
+    """
+    return "".join(b.text for b in msg.content if b.type == "text")
+
+
 def extract_lead_with_claude(email_text):
     """Claudeでリード情報を抽出する。テスト・無効な場合はNoneを返す。"""
     msg = claude.messages.create(
-        model="claude-opus-4-8",
+        model="claude-haiku-4-5",
         max_tokens=300,
         messages=[{
             "role": "user",
@@ -81,7 +90,7 @@ def extract_lead_with_claude(email_text):
     )
     import json
     try:
-        text = msg.content[0].text.strip()
+        text = _response_text(msg).strip()
         if text == "null":
             return None
         # コードブロックを除去
@@ -153,8 +162,11 @@ def search_urls(company_name):
 
 def build_summary(lead, site_content, urls, address_hints=""):
     msg = claude.messages.create(
-        model="claude-opus-4-8",
-        max_tokens=600,
+        model="claude-sonnet-5",
+        # Sonnet 5はthinking省略時にadaptiveでONになる。決まった書式へ整形するだけの
+        # 工程で思考は不要なうえ、max_tokensを思考トークンが食うため明示的に切る。
+        thinking={"type": "disabled"},
+        max_tokens=800,
         messages=[{
             "role": "user",
             "content": f"""ホテル・旅館の営業担当向けに企業調査サマリーを作成してください。
@@ -186,7 +198,7 @@ def build_summary(lead, site_content, urls, address_hints=""):
 • **booking.com URL**: {urls.get('booking', 'なし')}"""
         }]
     )
-    return msg.content[0].text
+    return _response_text(msg)
 
 
 # Notion rich_textプロパティの1テキストオブジェクトあたりの上限（Notion API仕様）。
