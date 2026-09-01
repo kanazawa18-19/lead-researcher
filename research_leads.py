@@ -23,7 +23,14 @@ CRM_SFA_LEAD_INQUIRY_WEBHOOK_SECRET = os.environ.get("CRM_SFA_LEAD_INQUIRY_WEBHO
 
 app = App(token=SLACK_BOT_TOKEN)
 claude = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
-notion = NotionClient(auth=NOTION_API_KEY) if NOTION_API_KEY else None
+# Notion API 2025-09-03以降、ページのparentにdatabase_idは使えずdata_source_idが必要
+# （旧来のdatabase_id指定は「should be a valid uuid」という紛らわしい検証エラーになる）。
+# web-engagement-tool側(`src/lib/notionSync.ts`, @notionhq/client v5)と同じ方式に揃える。
+NOTION_VERSION = "2025-09-03"
+notion = (
+    NotionClient(auth=NOTION_API_KEY, notion_version=NOTION_VERSION)
+    if NOTION_API_KEY else None
+)
 
 PROCESSED_REACTION = "white_check_mark"
 OWN_BOT_ID = app.client.auth_test()["bot_id"]
@@ -205,6 +212,32 @@ def build_summary(lead, site_content, urls, address_hints=""):
 _NOTION_RICH_TEXT_MAX_LEN = 2000
 
 
+_inquiry_data_source_id = None
+
+
+def get_inquiry_data_source_id():
+    """お問合せリード管理DBのdata_source_idを取得する（プロセス内で1度だけ問い合わせる）。
+
+    Notion API 2025-09-03からページのparentはdata_source_idで指定する。DBは複数の
+    データソースを持ちうるが、このDBは単一データソース前提のため先頭を使う
+    （web-engagement-tool側の`pullFromNotion()`も同じく`data_sources[0]`を使っている）。
+    """
+    global _inquiry_data_source_id
+    if _inquiry_data_source_id:
+        return _inquiry_data_source_id
+    try:
+        db = notion.databases.retrieve(database_id=NOTION_INQUIRY_DATABASE_ID)
+        sources = db.get("data_sources") or []
+        if not sources:
+            print("Notion data_source取得失敗: data_sourcesが空", flush=True)
+            return None
+        _inquiry_data_source_id = sources[0]["id"]
+        return _inquiry_data_source_id
+    except Exception as e:
+        print(f"Notion data_source取得失敗: {e}", flush=True)
+        return None
+
+
 def create_notion_inquiry_page(lead, summary):
     """企業調査サマリーを「補足」プロパティとして【営業部】お問合せリード管理DBへ登録する。
 
@@ -235,9 +268,14 @@ def create_notion_inquiry_page(lead, summary):
     if lead.get("phone"):
         properties[NOTION_PROP["phone"]] = {"phone_number": lead["phone"]}
 
+    data_source_id = get_inquiry_data_source_id()
+    if not data_source_id:
+        print(f"Notion登録失敗: {name} (data_source_idを取得できませんでした)", flush=True)
+        return
+
     try:
         notion.pages.create(
-            parent={"database_id": NOTION_INQUIRY_DATABASE_ID},
+            parent={"type": "data_source_id", "data_source_id": data_source_id},
             properties=properties,
         )
         print(f"Notion登録完了: {name}", flush=True)
@@ -265,7 +303,8 @@ def sync_lead_to_crm(lead):
                 "phone": lead.get("phone", ""),
             },
             headers={"X-Webhook-Secret": CRM_SFA_LEAD_INQUIRY_WEBHOOK_SECRET},
-            timeout=10,
+            # Vercelのコールドスタートで10秒では読み取りタイムアウトする事例があったため長めに取る
+            timeout=30,
         )
         r.raise_for_status()
         print(f"CRM連絡先同期完了: {r.json()}", flush=True)
